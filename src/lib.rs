@@ -1,4 +1,4 @@
-#![deny(warnings, missing_debug_implementations, missing_docs)]
+// #![deny(warnings, missing_debug_implementations, missing_docs)]
 
 //! Shuttle is a library for testing concurrent Rust code, heavily inspired by [Loom][].
 //!
@@ -433,5 +433,143 @@ macro_rules! __thread_local_inner {
                 init: || { $init },
                 _p: std::marker::PhantomData,
             };
+    }
+}
+
+/// TODO
+pub fn model<F>(f: F)
+where
+    F: Fn() + Sync + Send + 'static,
+{
+    check_random(f, 10000)
+}
+
+pub mod model {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    #[derive(Debug, Default)]
+    pub struct Builder {
+        /// Max number of threads to check as part of the execution.
+        ///
+        /// This should be set as low as possible and must be less than
+        /// [`MAX_THREADS`](crate::MAX_THREADS).
+        pub max_threads: usize,
+
+        /// Maximum number of thread switches per permutation.
+        ///
+        /// Defaults to `LOOM_MAX_BRANCHES` environment variable.
+        pub max_branches: usize,
+
+        /// Maximum number of permutations to explore.
+        ///
+        /// Defaults to `LOOM_MAX_PERMUTATIONS` environment variable.
+        pub max_permutations: Option<usize>,
+
+        /// Maximum amount of time to spend on checking
+        ///
+        /// Defaults to `LOOM_MAX_DURATION` environment variable.
+        pub max_duration: Option<Duration>,
+
+        /// Maximum number of thread preemptions to explore
+        ///
+        /// Defaults to `LOOM_MAX_PREEMPTIONS` environment variable.
+        pub preemption_bound: Option<usize>,
+
+        /// When doing an exhaustive check, uses the file to store and load the
+        /// check progress
+        ///
+        /// Defaults to `LOOM_CHECKPOINT_FILE` environment variable.
+        pub checkpoint_file: Option<PathBuf>,
+
+        /// How often to write the checkpoint file
+        ///
+        /// Defaults to `LOOM_CHECKPOINT_INTERVAL` environment variable.
+        pub checkpoint_interval: usize,
+
+        /// When `true`, locations are captured on each loom operation.
+        ///
+        /// Note that is is **very** expensive. It is recommended to first isolate a
+        /// failing iteration using `LOOM_CHECKPOINT_FILE`, then enable location
+        /// tracking.
+        ///
+        /// Defaults to `LOOM_LOCATION` environment variable.
+        pub location: bool,
+
+        /// Log execution output to stdout.
+        ///
+        /// Defaults to existance of `LOOM_LOG` environment variable.
+        pub log: bool,
+    }
+
+    impl Builder {
+        pub fn new() -> Builder {
+            Default::default()
+        }
+
+        pub fn check<F>(&self, f: F)
+        where
+            F: Fn() + Sync + Send + 'static,
+        {
+            check_random(f, 10000)
+        }
+    }
+}
+pub mod future {
+    pub use super::asynch::*;
+    use crate::sync::Mutex;
+    use std::task::Waker;
+
+    /// Mock implementation of `tokio::sync::AtomicWaker`.
+    #[derive(Debug)]
+    pub struct AtomicWaker {
+        waker: Mutex<Option<Waker>>,
+    }
+
+    impl AtomicWaker {
+        /// Create a new instance of `AtomicWaker`.
+        pub fn new() -> AtomicWaker {
+            AtomicWaker {
+                waker: Mutex::new(None),
+            }
+        }
+
+        /// Registers the current task to be notified on calls to `wake`.
+        pub fn register(&self, waker: Waker) {
+            match self.waker.try_lock() {
+                Ok(mut lock) => {
+                    *lock = Some(waker);
+                }
+                Err(_) => {
+                    waker.wake();
+                    crate::thread::yield_now();
+                }
+            }
+        }
+
+        /// Registers the current task to be woken without consuming the value.
+        pub fn register_by_ref(&self, waker: &Waker) {
+            self.register(waker.clone());
+        }
+
+        /// Notifies the task that last called `register`.
+        pub fn wake(&self) {
+            if let Some(waker) = self.take_waker() {
+                waker.wake();
+            }
+        }
+
+        /// Attempts to take the `Waker` value out of the `AtomicWaker` with the
+        /// intention that the caller will wake the task later.
+        pub fn take_waker(&self) -> Option<Waker> {
+            self.waker.lock().unwrap().take()
+        }
+    }
+
+    impl Default for AtomicWaker {
+        fn default() -> Self {
+            AtomicWaker::new()
+        }
     }
 }

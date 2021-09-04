@@ -136,6 +136,16 @@ where
     }
 }
 
+struct SendableFuture<F>(Pin<Box<F>>);
+unsafe impl<F> Send for SendableFuture<F> {}
+impl<F: Future> Future for SendableFuture<F> {
+    type Output = F::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.as_mut().poll(cx)
+    }
+}
+
 /// Run a future to completion on the current thread.
 pub fn block_on<F: Future>(future: F) -> F::Output {
     let mut future = Box::pin(future);

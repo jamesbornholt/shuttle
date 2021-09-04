@@ -177,6 +177,14 @@ macro_rules! atomic_int {
             pub unsafe fn raw_load(&self) -> $int_type {
                 self.inner.raw_load()
             }
+
+            pub unsafe fn unsync_load(&self) -> $int_type {
+                self.inner.raw_load()
+            }
+
+            pub fn with_mut<R>(&mut self, f: impl FnOnce(&mut $int_type) -> R) -> R {
+                self.inner.with_mut(f)
+            }
         }
     };
 }

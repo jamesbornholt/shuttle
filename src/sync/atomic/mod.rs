@@ -142,6 +142,11 @@ impl<T> Atomic<T> {
 }
 
 impl<T: Copy + Eq> Atomic<T> {
+    fn with_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
+        let t = self.inner.get_mut();
+        f(t)
+    }
+
     fn get_mut(&mut self) -> &mut T {
         self.exhale_clock();
         self.inner.get_mut()
@@ -234,4 +239,8 @@ impl<T: Copy + Eq> Atomic<T> {
             s.update_clock(self_clock.as_ref().unwrap());
         });
     }
+}
+
+pub fn spin_loop_hint() {
+    crate::thread::yield_now();
 }
