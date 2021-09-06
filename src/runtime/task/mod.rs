@@ -39,6 +39,7 @@ pub(crate) const DEFAULT_INLINE_TASKS: usize = 16;
 
 /// A `Task` represents a user-level unit of concurrency. Each task has an `id` that is unique within
 /// the execution, and a `state` reflecting whether the task is runnable (enabled) or not.
+#[derive(Debug)]
 pub(crate) struct Task {
     pub(super) id: TaskId,
     pub(super) state: TaskState,
@@ -51,8 +52,8 @@ pub(crate) struct Task {
     waiter: Option<TaskId>,
 
     waker: Waker,
-    // Remember whether the waker was invoked while we were running so we don't re-block
-    woken_by_self: bool,
+    // Remember whether the waker was invoked while we were running
+    woken: bool,
 
     name: Option<String>,
 
@@ -77,7 +78,7 @@ impl Task {
             clock,
             waiter: None,
             waker,
-            woken_by_self: false,
+            woken: false,
             detached: false,
             name,
             local_storage: LocalMap::new(),
@@ -107,10 +108,7 @@ impl Task {
                 let waker = ExecutionState::with(|state| state.current_mut().waker());
                 let cx = &mut Context::from_waker(&waker);
                 while future.as_mut().poll(cx).is_pending() {
-                    ExecutionState::with(|state| {
-                        // We need to block before thread::switch() unless we woke ourselves up
-                        state.current_mut().block_unless_self_woken();
-                    });
+                    ExecutionState::with(|state| state.current_mut().sleep_unless_woken());
                     thread::switch();
                 }
             },
@@ -150,6 +148,11 @@ impl Task {
         self.state = TaskState::Blocked;
     }
 
+    pub(crate) fn sleep(&mut self) {
+        assert!(self.state != TaskState::Finished);
+        self.state = TaskState::Sleeping;
+    }
+
     pub(crate) fn unblock(&mut self) {
         // Note we don't assert the task is blocked here. For example, a task invoking its own waker
         // will not be blocked when this is called.
@@ -162,23 +165,25 @@ impl Task {
         self.state = TaskState::Finished;
     }
 
-    /// Potentially block this task after it was polled by the executor.
+    /// Potentially put this task to sleep after it was polled by the executor, unless someone has
+    /// called its waker first.
     ///
-    /// A synchronous Task should never call this, because we want threads to be
-    /// enabled-by-default to avoid bugs where Shuttle incorrectly omits a potential execution.
-    /// We also need to handle a special case where a task invoked its own waker, in which case
-    /// we should not block the task.
-    pub(crate) fn block_unless_self_woken(&mut self) {
-        let was_woken_by_self = std::mem::replace(&mut self.woken_by_self, false);
-        if !was_woken_by_self {
-            self.block();
+    /// A synchronous Task should never call this, because we want threads to be enabled-by-default
+    /// to avoid bugs where Shuttle incorrectly omits a potential execution.
+    pub(crate) fn sleep_unless_woken(&mut self) {
+        let was_woken = std::mem::replace(&mut self.woken, false);
+        if !was_woken {
+            self.sleep();
         }
     }
 
-    /// Remember that we have been unblocked while we were currently running, and therefore should
-    /// not be blocked again by `block_unless_self_woken`.
-    pub(super) fn set_woken_by_self(&mut self) {
-        self.woken_by_self = true;
+    /// Remember that our waker has been called, and so we should not block the next time the
+    /// executor tries to put us to sleep.
+    pub(super) fn wake(&mut self) {
+        self.woken = true;
+        if self.state == TaskState::Sleeping {
+            self.unblock();
+        }
     }
 
     /// Register a waiter for this thread to terminate. Returns a boolean indicating whether the
@@ -241,8 +246,13 @@ impl Task {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum TaskState {
+    /// Available to be scheduled
     Runnable,
+    /// Blocked in a synchronization operation
     Blocked,
+    /// A `Future` that returned `Pending` is waiting to be woken up
+    Sleeping,
+    /// Task has finished
     Finished,
 }
 
@@ -332,6 +342,7 @@ impl LocalKeyId {
 /// Values are Option<_> because we need to be able to incrementally destruct them, as it's valid
 /// for TLS destructors to initialize new TLS slots. When a slot is destructed, its key is removed
 /// from `order` and its value is replaced with None.
+#[derive(Debug)]
 struct LocalMap {
     locals: HashMap<LocalKeyId, Option<Box<dyn Any>>>,
     order: VecDeque<LocalKeyId>,
