@@ -129,4 +129,9 @@ mod test {
             check_roundtrip(schedule);
         }
     }
+
+    #[test]
+    fn sched_thing() {
+        println!("schedule: {:?}", deserialize_schedule("91020df8acd191010000092005"));
+    }
 }

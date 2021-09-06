@@ -99,7 +99,44 @@ impl<T> Mutex<T> {
     /// If the lock could not be acquired at this time, then Err is returned. This function does not
     /// block.
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
-        unimplemented!()
+        trace!("attempting `try_lock` on mutex {:p}", self);
+
+        // Give someone else a chance to acquire the lock
+        thread::switch();
+
+        let me = ExecutionState::me();
+        let mut state = self.state.borrow_mut();
+
+        if let Some(holder) = state.holder {
+            assert_ne!(holder, me);
+            trace!(?holder, "failed `try_lock` on mutex {:p}", self);
+            return Err(TryLockError::WouldBlock);
+        }
+
+        assert!(state.holder.is_none());
+        state.holder = Some(me);
+        trace!(waiters=?state.waiters, "acquired mutex {:p}", self);
+        // Block all other threads, since we won the race to take this lock
+        // TODO a bit of a bummer that we have to do this (it would be cleaner if those threads
+        // TODO never become unblocked), but might need to track more state to avoid this.
+        for tid in state.waiters.iter() {
+            ExecutionState::with(|s| s.get_mut(tid).block());
+        }
+        // Update acquiring thread's clock with the clock stored in the Mutex
+        ExecutionState::with(|s| s.update_clock(&state.clock));
+        drop(state);
+
+        match self.inner.try_lock() {
+            Ok(guard) => Ok(MutexGuard {
+                inner: Some(guard),
+                mutex: self,
+            }),
+            Err(TryLockError::Poisoned(guard)) => Err(TryLockError::Poisoned(PoisonError::new(MutexGuard {
+                inner: Some(guard.into_inner()),
+                mutex: self,
+            }))),
+            Err(TryLockError::WouldBlock) => panic!("mutex state out of sync"),
+        }
     }
 
     /// Consumes this mutex, returning the underlying data.

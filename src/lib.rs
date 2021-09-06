@@ -347,6 +347,8 @@ where
 {
     use crate::scheduler::ReplayScheduler;
 
+    let _ = tracing_subscriber::fmt::try_init();
+
     let scheduler = ReplayScheduler::new_from_encoded(encoded_schedule);
     let runner = Runner::new(scheduler, Default::default());
     runner.run(f);
@@ -441,6 +443,8 @@ pub fn model<F>(f: F)
 where
     F: Fn() + Sync + Send + 'static,
 {
+    let _ = tracing_subscriber::fmt::try_init();
+
     check_random(f, 10000)
 }
 
@@ -537,11 +541,13 @@ pub mod future {
 
         /// Registers the current task to be notified on calls to `wake`.
         pub fn register(&self, waker: Waker) {
+            tracing::trace!("registering waker");
             match self.waker.try_lock() {
                 Ok(mut lock) => {
                     *lock = Some(waker);
                 }
                 Err(_) => {
+                    tracing::trace!("lost the race; waking now");
                     waker.wake();
                     crate::thread::yield_now();
                 }
@@ -556,6 +562,7 @@ pub mod future {
         /// Notifies the task that last called `register`.
         pub fn wake(&self) {
             if let Some(waker) = self.take_waker() {
+                tracing::trace!("waking registered waker");
                 waker.wake();
             }
         }

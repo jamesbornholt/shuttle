@@ -21,28 +21,34 @@ pub use rwlock::RwLockWriteGuard;
 pub use std::sync::Arc;
 
 pub struct Notify {
-    lock: Mutex<bool>,
+    waiter: Mutex<bool>,
     condvar: Condvar,
+    notified: atomic::AtomicBool,
 }
 
 impl Notify {
     pub fn new() -> Self {
         Self {
-            lock: Mutex::new(false),
+            waiter: Mutex::new(false),
             condvar: Condvar::new(),
+            notified: atomic::AtomicBool::new(false),
         }
     }
 
     pub fn notify(&self) {
+        let mut _lock = self.waiter.lock().unwrap();
+        self.notified.store(true, atomic::Ordering::SeqCst);
         self.condvar.notify_one();
     }
 
     pub fn wait(&self) {
-        let mut lock = self.lock.lock().unwrap();
+        let mut lock = self.waiter.lock().unwrap();
         assert!(!*lock, "only a single thread may wait on `Notify`");
         *lock = true;
 
-        let mut lock = self.condvar.wait(lock).unwrap();
+        while !self.notified.load(atomic::Ordering::SeqCst) {
+            lock = self.condvar.wait(lock).unwrap();
+        }
         *lock = false;
     }
 }

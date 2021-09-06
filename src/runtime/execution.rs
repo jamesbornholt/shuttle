@@ -61,7 +61,12 @@ impl Execution {
 
         EXECUTION_STATE.set(&state, move || {
             // Spawn `f` as the first task
-            ExecutionState::spawn_thread(f, config.stack_size, None, Some(VectorClock::new()));
+            ExecutionState::spawn_thread(
+                f,
+                config.stack_size,
+                Some("main-thread".to_string()),
+                Some(VectorClock::new()),
+            );
 
             // Run the test to completion
             while self.step(config) {}
@@ -100,7 +105,14 @@ impl Execution {
                             .tasks
                             .iter()
                             .filter(|t| !t.finished())
-                            .map(|t| format!("{}{}", t.id().0, if t.detached { " [detached]" } else { "" }))
+                            .map(|t| {
+                                format!(
+                                    "{} ({:?}{})",
+                                    t.name().unwrap_or_else(|| "<unknown>".to_string()),
+                                    t.id(),
+                                    if t.detached { ", detached" } else { "" }
+                                )
+                            })
                             .collect::<Vec<_>>();
                         NextStep::Failure(
                             format!("deadlock! blocked tasks: [{}]", blocked_tasks.join(", ")),
