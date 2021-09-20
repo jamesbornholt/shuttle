@@ -16,41 +16,23 @@ fn max_steps(n: usize) -> Config {
 
 #[test]
 fn trivial_one_thread() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-        });
-    }
-
-    assert_eq!(iterations.load(Ordering::SeqCst), 1);
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || ());
+    assert_eq!(iterations, 1);
 }
 
 #[test]
 fn trivial_two_threads() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-
-            thread::spawn(|| {});
-        });
-    }
-
-    assert_eq!(iterations.load(Ordering::SeqCst), 2);
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || {
+        thread::spawn(|| {});
+    });
+    assert_eq!(iterations, 2);
 }
 
-fn two_threads_work(counter: &Arc<AtomicUsize>) {
-    counter.fetch_add(1, Ordering::SeqCst);
-
+fn two_threads_work() {
     let lock = Arc::new(Mutex::new(0));
 
     {
@@ -67,30 +49,20 @@ fn two_threads_work(counter: &Arc<AtomicUsize>) {
 
 #[test]
 fn two_threads() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || two_threads_work(&counter));
-    }
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(two_threads_work);
 
     // 2 threads, 3 operations each (thread start, lock acq, lock rel)
     // 2*3 choose 3 = 20
-    assert_eq!(iterations.load(Ordering::SeqCst), 20);
+    assert_eq!(iterations, 20);
 }
 
 #[test]
 fn two_threads_depth_4() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, max_steps(4));
-        runner.run(move || two_threads_work(&counter));
-    }
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, max_steps(4));
+    let iterations = runner.run(two_threads_work);
 
     // We have two threads T0 and T1 with the following lifecycle (with letter denoting each step):
     //    T0: spawns T1 (S), waits for lock (W), acquires + releases lock (L), finishes (F)
@@ -103,19 +75,14 @@ fn two_threads_depth_4() {
     // The set of valid interleavings of depth 4 is therefore:
     //    { SWLF, SWLw, SWwL, SWwl, SwWL, SwWl, SwlW, Swlf }
     // for a total of 8 interleavings
-    assert_eq!(iterations.load(Ordering::SeqCst), 8);
+    assert_eq!(iterations, 8);
 }
 
 #[test]
 fn two_threads_depth_5() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, max_steps(5));
-        runner.run(move || two_threads_work(&counter));
-    }
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, max_steps(5));
+    let iterations = runner.run(two_threads_work);
 
     // We have two threads T0 and T1 with the following lifecycle (with letter denoting each step):
     //    T0: spawns T1 (S), waits for lock (W), acquires + releases lock (L), finishes (F)
@@ -130,135 +97,105 @@ fn two_threads_depth_5() {
     //      SWLwl, SWwLl, SWwlL, SwWLl, SwWlL, SwlWL,  // 3 ops by T0, 2 ops by T1
     //      SWwlf, SwWlf, SwlWf, SwlfW }               // 2 ops by T0, 3 ops by T1
     // for a total of 14 interleavings
-    assert_eq!(iterations.load(Ordering::SeqCst), 14);
+    assert_eq!(iterations, 14);
 }
 
 #[test]
 fn yield_loop_one_thread() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-
-            thread::spawn(|| {
-                for _ in 0..4 {
-                    thread::yield_now();
-                }
-            });
-
-            // no-op
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || {
+        thread::spawn(|| {
+            for _ in 0..4 {
+                thread::yield_now();
+            }
         });
-    }
+
+        // no-op
+    });
 
     // 6 places we can run thread 0: before thread 1 starts, before each of the 4 yields, or last
-    assert_eq!(iterations.load(Ordering::SeqCst), 6);
+    assert_eq!(iterations, 6);
 }
 
 #[test]
 fn yield_loop_two_threads() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-
-            thread::spawn(|| {
-                for _ in 0..4 {
-                    thread::yield_now();
-                }
-            });
-
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || {
+        thread::spawn(|| {
             for _ in 0..4 {
                 thread::yield_now();
             }
         });
-    }
+
+        for _ in 0..4 {
+            thread::yield_now();
+        }
+    });
 
     // 2 threads, 5 operations each (thread start + 4 yields)
     // 2*5 choose 5 = 252
-    assert_eq!(iterations.load(Ordering::SeqCst), 252);
+    assert_eq!(iterations, 252);
 }
 
 #[test]
 fn yield_loop_two_threads_bounded() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(Some(100), false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-
-            thread::spawn(|| {
-                for _ in 0..4 {
-                    thread::yield_now();
-                }
-            });
-
+    let scheduler = DfsScheduler::new(Some(100), false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || {
+        thread::spawn(|| {
             for _ in 0..4 {
                 thread::yield_now();
             }
         });
-    }
 
-    assert_eq!(iterations.load(Ordering::SeqCst), 100);
+        for _ in 0..4 {
+            thread::yield_now();
+        }
+    });
+
+    assert_eq!(iterations, 100);
 }
 
 #[test]
 fn yield_loop_three_threads() {
-    let iterations = Arc::new(AtomicUsize::new(0));
-
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, Default::default());
-        runner.run(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-
-            thread::spawn(|| {
-                for _ in 0..3 {
-                    thread::yield_now();
-                }
-            });
-
-            thread::spawn(|| {
-                for _ in 0..3 {
-                    thread::yield_now();
-                }
-            });
-
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(move || {
+        thread::spawn(|| {
             for _ in 0..3 {
                 thread::yield_now();
             }
         });
-    }
 
-    assert_eq!(iterations.load(Ordering::SeqCst), 50050);
+        thread::spawn(|| {
+            for _ in 0..3 {
+                thread::yield_now();
+            }
+        });
+
+        for _ in 0..3 {
+            thread::yield_now();
+        }
+    });
+
+    assert_eq!(iterations, 50050);
 }
 
 #[test]
 fn yield_loop_max_depth() {
-    let iterations = Arc::new(AtomicUsize::new(0));
+    static INNER_LOOP_TRIPS: AtomicUsize = AtomicUsize::new(0);
 
-    {
-        let counter = Arc::clone(&iterations);
-        let scheduler = DfsScheduler::new(None, false);
-        let runner = Runner::new(scheduler, max_steps(20));
-        runner.run(move || {
-            for _ in 0..100 {
-                counter.fetch_add(1, Ordering::SeqCst);
-                thread::yield_now();
-            }
-        });
-    }
+    let scheduler = DfsScheduler::new(None, false);
+    let runner = Runner::new(scheduler, max_steps(20));
+    let iterations = runner.run(move || {
+        for _ in 0..100 {
+            INNER_LOOP_TRIPS.fetch_add(1, Ordering::SeqCst);
+            thread::yield_now();
+        }
+    });
 
-    assert_eq!(iterations.load(Ordering::SeqCst), 20);
+    assert_eq!(iterations, 1);
+    assert_eq!(INNER_LOOP_TRIPS.load(Ordering::SeqCst), 20);
 }
