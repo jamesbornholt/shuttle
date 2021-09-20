@@ -329,7 +329,7 @@ where
 {
     use crate::scheduler::DfsScheduler;
 
-    let scheduler = DfsScheduler::new(max_iterations, false);
+    let scheduler = DfsScheduler::new(max_iterations, None, false);
     let runner = Runner::new(scheduler, Default::default());
     runner.run(f);
 }

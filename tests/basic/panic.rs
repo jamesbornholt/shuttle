@@ -66,7 +66,7 @@ fn rwlock_poison() {
 #[ignore] // tests a double panic, so we can't enable it by default
 fn max_steps_panic_during_drop() {
     let config = Config::new();
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, config);
     runner.run(|| {
         #[derive(Clone)]

@@ -184,7 +184,7 @@ fn shared_static() {
             .map(|_| {
                 let counter = Arc::clone(&counter);
                 std::thread::spawn(move || {
-                    let scheduler = DfsScheduler::new(None, false);
+                    let scheduler = DfsScheduler::new(None, None, false);
                     let runner = Runner::new(scheduler, Default::default());
                     runner.run(move || {
                         let thds = (0..2)

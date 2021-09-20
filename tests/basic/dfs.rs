@@ -1,7 +1,7 @@
 use shuttle::scheduler::DfsScheduler;
+use shuttle::sync::atomic::{AtomicBool, Ordering};
 use shuttle::sync::Mutex;
 use shuttle::{thread, Config, MaxSteps, Runner};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use test_env_log::test;
 
@@ -16,7 +16,7 @@ fn max_steps(n: usize) -> Config {
 
 #[test]
 fn trivial_one_thread() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || ());
     assert_eq!(iterations, 1);
@@ -24,7 +24,7 @@ fn trivial_one_thread() {
 
 #[test]
 fn trivial_two_threads() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || {
         thread::spawn(|| {});
@@ -49,7 +49,7 @@ fn two_threads_work() {
 
 #[test]
 fn two_threads() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(two_threads_work);
 
@@ -60,7 +60,7 @@ fn two_threads() {
 
 #[test]
 fn two_threads_depth_4() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, max_steps(4));
     let iterations = runner.run(two_threads_work);
 
@@ -80,7 +80,7 @@ fn two_threads_depth_4() {
 
 #[test]
 fn two_threads_depth_5() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, max_steps(5));
     let iterations = runner.run(two_threads_work);
 
@@ -102,7 +102,7 @@ fn two_threads_depth_5() {
 
 #[test]
 fn yield_loop_one_thread() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || {
         thread::spawn(|| {
@@ -120,7 +120,7 @@ fn yield_loop_one_thread() {
 
 #[test]
 fn yield_loop_two_threads() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || {
         thread::spawn(|| {
@@ -141,7 +141,7 @@ fn yield_loop_two_threads() {
 
 #[test]
 fn yield_loop_two_threads_bounded() {
-    let scheduler = DfsScheduler::new(Some(100), false);
+    let scheduler = DfsScheduler::new(Some(100), None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || {
         thread::spawn(|| {
@@ -160,7 +160,7 @@ fn yield_loop_two_threads_bounded() {
 
 #[test]
 fn yield_loop_three_threads() {
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, Default::default());
     let iterations = runner.run(move || {
         thread::spawn(|| {
@@ -185,9 +185,11 @@ fn yield_loop_three_threads() {
 
 #[test]
 fn yield_loop_max_depth() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     static INNER_LOOP_TRIPS: AtomicUsize = AtomicUsize::new(0);
 
-    let scheduler = DfsScheduler::new(None, false);
+    let scheduler = DfsScheduler::new(None, None, false);
     let runner = Runner::new(scheduler, max_steps(20));
     let iterations = runner.run(move || {
         for _ in 0..100 {
@@ -198,4 +200,106 @@ fn yield_loop_max_depth() {
 
     assert_eq!(iterations, 1);
     assert_eq!(INNER_LOOP_TRIPS.load(Ordering::SeqCst), 20);
+}
+
+// Run `num_threads` threads that each yield `num_yields` times.
+fn yielding_threads(num_threads: usize, num_yields: usize) {
+    // Main thread will be thread 0
+    for _ in 1..num_threads {
+        thread::spawn(move || {
+            for _ in 0..num_yields {
+                thread::yield_now();
+            }
+        });
+    }
+
+    for _ in 0..num_yields {
+        thread::yield_now();
+    }
+}
+
+#[test]
+fn yielding_threads_0_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(0), false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(|| yielding_threads(2, 2));
+
+    // First thread never blocks, so there's only one preemption-free schedule
+    assert_eq!(iterations, 1);
+}
+
+#[test]
+fn yielding_threads_1_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(1), false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(|| yielding_threads(2, 2));
+
+    // First thread never blocks, so once it gets preempted our preemption limit is exhausted and
+    // the second thread must run to completion. There are four places that preemption can happen
+    // (before the first thread runs its yields, or after each yield).
+    assert_eq!(iterations, 4);
+}
+
+#[test]
+fn yielding_threads_2_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(2), false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(|| yielding_threads(2, 2));
+
+    // Just enumerate all the schedules that can be made with 2 threads and 2 yields; there are 4
+    // with <= 1 preemptions, and another 6 with exactly 2 preemptions.
+    assert_eq!(iterations, 10);
+}
+
+#[test]
+fn yielding_threads_3_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(3), false);
+    let runner = Runner::new(scheduler, Default::default());
+    let iterations = runner.run(|| yielding_threads(2, 2));
+
+    // Just enumerate all the schedules that can be made with 2 threads and 2 yields; there are 10
+    // with <= 2 preemptions, and another 6 with exactly 3 preemptions.
+    assert_eq!(iterations, 16);
+}
+
+// A bug that requires two preemptions to detect
+fn depth_2_bug() {
+    let flag = Arc::new(AtomicBool::new(false));
+    let flag_clone = flag.clone();
+
+    thread::spawn(move || {
+        flag_clone.store(true, Ordering::SeqCst);
+        // Must preempt here to give main thread a chance to see `true`
+        flag_clone.store(false, Ordering::SeqCst);
+    });
+
+    let a = flag.load(Ordering::SeqCst);
+    // Must preempt here to give side thread a change to write `true`
+    let b = flag.load(Ordering::SeqCst);
+
+    assert_eq!(a, b, "reads don't match");
+}
+
+// Need two preemptions to trigger this bug, so should pass
+#[test]
+fn depth_2_bug_0_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(0), false);
+    let runner = Runner::new(scheduler, Default::default());
+    runner.run(depth_2_bug);
+}
+
+// Need two preemptions to trigger this bug, so should pass
+#[test]
+fn depth_2_bug_1_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(1), false);
+    let runner = Runner::new(scheduler, Default::default());
+    runner.run(depth_2_bug);
+}
+
+#[test]
+#[should_panic(expected = "reads don't match")]
+fn depth_2_bug_2_preemptions() {
+    let scheduler = DfsScheduler::new(None, Some(2), false);
+    let runner = Runner::new(scheduler, Default::default());
+    runner.run(depth_2_bug);
 }
