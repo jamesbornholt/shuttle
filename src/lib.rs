@@ -1,5 +1,6 @@
 #![deny(warnings, missing_debug_implementations, missing_docs)]
 
+
 //! Shuttle is a library for testing concurrent Rust code, heavily inspired by [Loom][].
 //!
 //! Shuttle focuses on randomized testing, rather than the exhaustive testing that Loom offers. This
@@ -307,6 +308,21 @@ where
     let scheduler = RandomScheduler::new(iterations);
     let runner = Runner::new(scheduler, Default::default());
     runner.run(f);
+}
+
+
+pub fn check_fuzz<F>(f: F, iterations: usize)
+where 
+    F: Fn() + Send + Sync + 'static 
+{
+    let scheduler;
+    //this is so wrong lmao
+    fuzz!(|sched: Schedule| {
+        scheduler = FuzzScheduler::new(sched);
+    });
+    let runner = Runner::new(scheduler, Default::default());
+    runner.run_fuzz(f);
+
 }
 
 /// Run the given function under a PCT concurrency scheduler for some number of iterations at the

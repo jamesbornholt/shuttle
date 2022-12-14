@@ -299,6 +299,7 @@ pub(crate) enum ParkState {
 /// A `TaskId` is a unique identifier for a task. `TaskId`s are never reused within a single
 /// execution.
 #[derive(PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TaskId(pub(super) usize);
 
 impl From<usize> for TaskId {

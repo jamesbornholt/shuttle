@@ -14,6 +14,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 use tracing::{span, Level};
+use honggfuzz::fuzz;
+
 
 /// A `Runner` is the entry-point for testing concurrent code.
 ///
@@ -35,6 +37,42 @@ impl<S: Scheduler + 'static> Runner<S> {
             scheduler: Rc::new(RefCell::new(metrics_scheduler)),
             config,
         }
+    }
+
+    pub fn run_fuzz<F>(self, f: F) -> usize
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        CONTINUATION_POOL.set(&ContinuationPool::new(), || {
+            let f = Arc::new(f);
+
+            let start = Instant::now();
+
+            let mut i = 0;
+            loop {
+                //give scheduler a schedule
+                fuzz!(|Schedule| {
+
+                });
+
+                if self.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
+                    break;
+                }
+
+                let schedule = match self.scheduler.borrow_mut().new_execution() {
+                    None => break,
+                    Some(s) => s,
+                };
+
+                let execution = Execution::new(self.scheduler.clone(), schedule);
+                let f = Arc::clone(&f);
+
+                span!(Level::INFO, "execution", i).in_scope(|| execution.run(&self.config, move || f()));
+
+                i += 1;
+            }
+            i
+        })
     }
 
     /// Test the given function and return the number of times the function was invoked during the
