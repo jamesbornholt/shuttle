@@ -21,17 +21,17 @@ pub use replay::ReplayScheduler;
 pub use round_robin::RoundRobinScheduler;
 pub use fuzz::FuzzScheduler;
 
+use arbitrary::Arbitrary;
+
 /// A `Schedule` determines the order in which tasks are to be executed
 // TODO would be nice to make this generic in the type of `seed`, but for now all our seeds are u64s
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Arbitrary)]
 pub struct Schedule {
     seed: u64,
     steps: Vec<ScheduleStep>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[derive(Clone, Debug, PartialEq, Eq, Arbitrary)]
 enum ScheduleStep {
     Task(TaskId),
     Random,

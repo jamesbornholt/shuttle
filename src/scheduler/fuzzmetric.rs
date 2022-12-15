@@ -1,11 +1,11 @@
 use crate::runtime::task::TaskId;
-use crate::scheduler::{Schedule, Scheduler};
+use crate::scheduler::{Schedule, FuzzScheduler};
 use tracing::info;
 
 /// A `MetricsScheduler` wraps an inner `Scheduler` and collects metrics about the schedules it's
 /// generating.
 #[derive(Debug)]
-pub(crate) struct MetricsScheduler<S: ?Sized + Scheduler> {
+pub(crate) struct FuzzMetricsScheduler<S: ?Sized + FuzzScheduler> {
     inner: Box<S>,
 
     iterations: usize,
@@ -17,7 +17,6 @@ pub(crate) struct MetricsScheduler<S: ?Sized + Scheduler> {
     last_task: TaskId,
     // Number of times the scheduled task changed
     context_switches: usize,
-    context_switches_metric: CountSummaryMetric,
     // Number of times the scheduled task changed when the previous task was still runnable
     preemptions: usize,
     preemptions_metric: CountSummaryMetric,
@@ -26,7 +25,7 @@ pub(crate) struct MetricsScheduler<S: ?Sized + Scheduler> {
     random_choices_metric: CountSummaryMetric,
 }
 
-impl<S: Scheduler> MetricsScheduler<S> {
+impl<S: FuzzScheduler> FuzzMetricsScheduler<S> {
     /// Create a new `MetricsScheduler` by wrapping the given `Scheduler` implementation.
     pub(crate) fn new(inner: S) -> Self {
         Self {
@@ -49,8 +48,7 @@ impl<S: Scheduler> MetricsScheduler<S> {
         }
     }
 
-    fn new_execution_fuzz(&mut self, schedule: Schedule) -> Option<Schedule> 
-    {
+    fn new_execution_fuzz(schedule: Schedule) -> Option<Schedule> {
         if self.iterations > 0 {
             self.record_and_reset_metrics();
 
@@ -64,11 +62,11 @@ impl<S: Scheduler> MetricsScheduler<S> {
         }
         self.iterations += 1;
         
-        self.inner.new_execution_fuzz(schedule);
+        self.inner.new_execution_fuzz();
     }
 }
 
-impl<S: ?Sized + Scheduler> MetricsScheduler<S> {
+impl<S: ?Sized + FuzzScheduler> FuzzMetricsScheduler<S> {
     fn record_and_reset_metrics(&mut self) {
         self.steps_metric.record(self.steps);
         self.steps = 0;
@@ -83,7 +81,7 @@ impl<S: ?Sized + Scheduler> MetricsScheduler<S> {
     }
 }
 
-impl<S: Scheduler> Scheduler for MetricsScheduler<S> {
+impl<S: FuzzScheduler> Scheduler for FuzzMetricsScheduler<S> {
     fn new_execution(&mut self) -> Option<Schedule> {
         if self.iterations > 0 {
             self.record_and_reset_metrics();
@@ -128,7 +126,7 @@ impl<S: Scheduler> Scheduler for MetricsScheduler<S> {
     }
 }
 
-impl<S: ?Sized + Scheduler> Drop for MetricsScheduler<S> {
+impl<S: ?Sized + FuzzScheduler> Drop for FuzzMetricsScheduler<S> {
     fn drop(&mut self) {
         // If steps > 0 then we didn't get a chance to record the metrics for the current execution
         // (it's probably panicking), so record them now
