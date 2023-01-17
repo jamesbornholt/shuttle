@@ -64,7 +64,7 @@ impl<S: Scheduler> MetricsScheduler<S> {
         }
         self.iterations += 1;
         
-        self.inner.new_execution_fuzz(schedule);
+        self.inner.new_execution_fuzz(Some(schedule))
     }
 }
 

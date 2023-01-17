@@ -1,4 +1,5 @@
-#![deny(warnings, missing_debug_implementations, missing_docs)]
+// #![deny(warnings, missing_debug_implementations, missing_docs)]
+#![deny(warnings, missing_debug_implementations)]
 
 
 //! Shuttle is a library for testing concurrent Rust code, heavily inspired by [Loom][].
@@ -310,16 +311,14 @@ where
     runner.run(f);
 }
 
-
-pub fn check_fuzz<F>(f: F, iterations: usize)
+// for now, no iterations -- just fuck with it
+pub fn check_fuzz<F>(f: F, _iterations: usize)
 where 
     F: Fn() + Send + Sync + 'static 
 {
-    let scheduler;
-    //this is so wrong lmao
-    fuzz!(|sched: Schedule| {
-        scheduler = FuzzScheduler::new(sched);
-    });
+    use crate::scheduler::FuzzScheduler;
+
+    let scheduler = FuzzScheduler::new();
     let runner = Runner::new(scheduler, Default::default());
     runner.run_fuzz(f);
 

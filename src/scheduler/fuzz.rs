@@ -17,9 +17,6 @@ pub struct FuzzScheduler {
 }
 
 impl FuzzScheduler {
-    // you can only make a fuzz scheduler by passing in a schedule
-    // can choose to not pass in a schedule.
-    // need to figure out how to pass in schedule on creation
     pub fn new() -> Self {
         Self {
             schedule: Some(Schedule::new(0)),
@@ -30,23 +27,7 @@ impl FuzzScheduler {
         }
     }
 
-    pub fn new_execution_fuzz(&mut self, schedule: Option<Schedule>) -> Option<Schedule> {
-        //generate new fuzz schedule (need a schedule to be passed in)
-        //TODO: make sure that the previous schedule has run to completion
-
-        if self.complete {
-            self.complete = false;
-            self.schedule = schedule;
-            schedule
-        }
-        else {
-            //couldn't reset schedule
-            None
-        }
-
-        // always return current schedule... not sure if best idea
-        
-    }
+    
 
 }
 
@@ -61,8 +42,9 @@ impl Scheduler for FuzzScheduler {
     }
     fn next_task( &mut self,
         runnable_tasks: &[TaskId],
-        current_task: Option<TaskId>,
-        is_yielding: bool,
+        //make sure these are/are not needed?
+        _current_task: Option<TaskId>,
+        _is_yielding: bool,
     ) -> Option<TaskId>{
 
         // not sure if the commented code is necessary..?
@@ -70,7 +52,7 @@ impl Scheduler for FuzzScheduler {
         //     assert!(self.allow_incomplete, "schedule ended early");
         //     return None;
         // }
-        match self.schedule {
+        match &self.schedule {
             Some(schedule) => {
                 // TODO: just stole this from replay. may not even be right, not sure
                 match schedule.steps[self.steps] {
@@ -104,6 +86,24 @@ impl Scheduler for FuzzScheduler {
 
     fn next_u64(&mut self) -> u64 {
         self.data_source.next_u64()
+    }
+
+    fn new_execution_fuzz(&mut self, schedule: Option<Schedule>) -> Option<Schedule> {
+        //generate new fuzz schedule (need a schedule to be passed in)
+        //TODO: make sure that the previous schedule has run to completion
+
+        if self.complete {
+            self.complete = false;
+            self.schedule = schedule;
+            self.schedule.clone()
+        }
+        else {
+            //couldn't reset schedule
+            None
+        }
+
+        // always return current schedule... not sure if best idea
+        
     }
 
 }

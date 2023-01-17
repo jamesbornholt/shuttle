@@ -11,6 +11,7 @@ mod fuzz;
 
 pub(crate) mod metrics;
 pub(crate) mod serialization;
+// pub(super) mod fuzzmetric;
 
 pub use crate::runtime::task::TaskId;
 
@@ -109,6 +110,12 @@ pub trait Scheduler {
 
     /// Choose the next u64 value to return to the currently running task.
     fn next_u64(&mut self) -> u64;
+
+    fn new_execution_fuzz(&mut self, _schedule: Option<Schedule>) -> Option<Schedule> {
+        //other than for fuzz scheduler, this will be a no-op
+        //basically, just don't be silly and don't use it! haha
+        Some(Schedule::new(0)) 
+    }
 }
 
 impl Scheduler for Box<dyn Scheduler + Send> {

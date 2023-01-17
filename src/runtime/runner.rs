@@ -2,6 +2,7 @@ use crate::runtime::execution::Execution;
 use crate::runtime::task::TaskId;
 use crate::runtime::thread::continuation::{ContinuationPool, CONTINUATION_POOL};
 use crate::scheduler::metrics::MetricsScheduler;
+// use crate::scheduler::fuzzmetric::FuzzMetricsScheduler;
 use crate::scheduler::{Schedule, Scheduler};
 use crate::Config;
 use std::cell::RefCell;
@@ -15,6 +16,7 @@ use std::thread;
 use std::time::Instant;
 use tracing::{span, Level};
 use honggfuzz::fuzz;
+
 
 
 /// A `Runner` is the entry-point for testing concurrent code.
@@ -39,6 +41,15 @@ impl<S: Scheduler + 'static> Runner<S> {
         }
     }
 
+    pub fn new_fuzz(scheduler: S, config: Config) -> Self {
+        let metrics_scheduler = MetricsScheduler::new(scheduler);
+
+        Self {
+            scheduler: Rc::new(RefCell::new(metrics_scheduler)),
+            config,
+        }
+    }
+
     pub fn run_fuzz<F>(self, f: F) -> usize
     where
         F: Fn() + Send + Sync + 'static,
@@ -51,25 +62,27 @@ impl<S: Scheduler + 'static> Runner<S> {
             let mut i = 0;
             loop {
                 //give scheduler a schedule
-                fuzz!(|Schedule| {
-
-                });
-
+                
                 if self.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
                     break;
                 }
+                fuzz!(|s: Schedule| {
+                    // self.scheduler.inner.new_execution(s);
 
-                let schedule = match self.scheduler.borrow_mut().new_execution() {
-                    None => break,
-                    Some(s) => s,
-                };
-
-                let execution = Execution::new(self.scheduler.clone(), schedule);
-                let f = Arc::clone(&f);
-
-                span!(Level::INFO, "execution", i).in_scope(|| execution.run(&self.config, move || f()));
-
-                i += 1;
+                    
+    
+                    let schedule = match self.scheduler.borrow_mut().new_execution_fuzz(Some(s)) {
+                        None => panic!("do something more intelligent here"),
+                        Some(s) => s,
+                    };
+    
+                    let execution = Execution::new(self.scheduler.clone(), schedule);
+                    let f = Arc::clone(&f);
+    
+                    span!(Level::INFO, "execution", i).in_scope(|| execution.run(&self.config, move || f()));
+    
+                    i += 1;
+                });
             }
             i
         })
