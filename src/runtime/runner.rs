@@ -69,8 +69,6 @@ impl<S: Scheduler + 'static> Runner<S> {
                 fuzz!(|s: Schedule| {
                     // self.scheduler.inner.new_execution(s);
 
-                    
-    
                     let schedule = match self.scheduler.borrow_mut().new_execution_fuzz(Some(s)) {
                         None => panic!("do something more intelligent here"),
                         Some(s) => s,
