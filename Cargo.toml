@@ -18,9 +18,12 @@ rand = "0.8.5"
 rand_pcg = "0.3.1"
 scoped-tls = "1.0.0"
 smallvec = "1.6.1"
+afl = "*"
 tracing = { version = "0.1.21", default-features = false, features = ["std"] }
 arbitrary = { version = "1", features = ["derive"] }
-honggfuzz = "0.5"
+honggfuzz = { version = "*"}
+
+# honggfuzz = { path = "/Users/benginow/Projects/research/honggfuzz-rs" }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["html_reports"] }

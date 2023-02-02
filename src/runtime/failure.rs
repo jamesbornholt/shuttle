@@ -124,6 +124,7 @@ pub struct PanicHookGuard;
 
 impl Drop for PanicHookGuard {
     fn drop(&mut self) {
+        // panic!("james");
         PANIC_HOOK.with(|lock| *lock.lock().unwrap() = PanicHookState::Disarmed);
     }
 }

@@ -1,5 +1,5 @@
 // #![deny(warnings, missing_debug_implementations, missing_docs)]
-#![deny(warnings, missing_debug_implementations)]
+// #![deny(warnings, missing_debug_implementations)]
 
 
 //! Shuttle is a library for testing concurrent Rust code, heavily inspired by [Loom][].

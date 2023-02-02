@@ -15,7 +15,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 use tracing::{span, Level};
-use honggfuzz::fuzz;
+use afl::fuzz;
+use std::process::exit;
+// use honggfuzz::fuzz;
 
 
 
@@ -54,22 +56,28 @@ impl<S: Scheduler + 'static> Runner<S> {
     where
         F: Fn() + Send + Sync + 'static,
     {
+        // Q: is continuation pool here necessary?
         CONTINUATION_POOL.set(&ContinuationPool::new(), || {
             let f = Arc::new(f);
 
             let start = Instant::now();
 
             let mut i = 0;
-            loop {
+            // loop {
                 //give scheduler a schedule
                 
-                if self.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
-                    break;
-                }
+                
                 fuzz!(|s: Schedule| {
+                    println!("\nhello?");
+                    if self.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
+                        // simple exit once max time has elapsed
+                        println!("Maximum runtime has elapsed -- if you would like to run for a longer duration, please specify desired run time");
+                        std::process::exit;
+                    }
                     // self.scheduler.inner.new_execution(s);
+                    println!("\nSCHEDULE {s:?}");
 
-                    let schedule = match self.scheduler.borrow_mut().new_execution_fuzz(Some(s)) {
+                    let schedule = match self.scheduler.borrow_mut().new_execution_fuzz(Some(s.clone())) {
                         None => panic!("do something more intelligent here"),
                         Some(s) => s,
                     };
@@ -81,7 +89,7 @@ impl<S: Scheduler + 'static> Runner<S> {
     
                     i += 1;
                 });
-            }
+            // }
             i
         })
     }

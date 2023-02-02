@@ -55,6 +55,16 @@ impl Scheduler for FuzzScheduler {
         match &self.schedule {
             Some(schedule) => {
                 // TODO: just stole this from replay. may not even be right, not sure
+                println!("BBBBBBBBBBO {0:?}, {1}", schedule.steps, self.steps);
+                if schedule.steps.len() <= self.steps {
+                    println!("in that thicc thicc if statement");
+                    if runnable_tasks.len() > 0 {
+                        return Some(runnable_tasks[0]);
+                    }
+                    else {
+                        return None;
+                    }
+                }
                 match schedule.steps[self.steps] {
                     ScheduleStep::Random => {
                         panic!("can't do anything with random choice -- supposed to be guided.");
@@ -93,6 +103,7 @@ impl Scheduler for FuzzScheduler {
         //TODO: make sure that the previous schedule has run to completion
 
         if self.complete {
+            self.steps = 0;
             self.complete = false;
             self.schedule = schedule;
             self.schedule.clone()
