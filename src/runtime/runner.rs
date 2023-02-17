@@ -7,7 +7,7 @@ use crate::scheduler::{Schedule, Scheduler};
 use crate::Config;
 use std::cell::RefCell;
 use std::fmt;
-use std::panic;
+use std::panic::{self, RefUnwindSafe, UnwindSafe, AssertUnwindSafe};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -16,7 +16,7 @@ use std::thread;
 use std::time::Instant;
 use tracing::{span, Level};
 use afl::fuzz;
-use std::process::exit;
+
 // use honggfuzz::fuzz;
 
 
@@ -54,8 +54,11 @@ impl<S: Scheduler + 'static> Runner<S> {
 
     pub fn run_fuzz<F>(self, f: F) -> usize
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn() + Send + Sync + RefUnwindSafe + UnwindSafe + 'static,
     {
+        let this = AssertUnwindSafe(self);
+
+
         // Q: is continuation pool here necessary?
         CONTINUATION_POOL.set(&ContinuationPool::new(), || {
             let f = Arc::new(f);
@@ -68,8 +71,9 @@ impl<S: Scheduler + 'static> Runner<S> {
                 
                 
                 fuzz!(|s: Schedule| {
-                    println!("\nhello?");
-                    if self.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
+                    panic::AssertUnwindSafe(|| {
+                        println!("\nhello?");
+                    if this.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
                         // simple exit once max time has elapsed
                         println!("Maximum runtime has elapsed -- if you would like to run for a longer duration, please specify desired run time");
                         std::process::exit;
@@ -77,19 +81,23 @@ impl<S: Scheduler + 'static> Runner<S> {
                     // self.scheduler.inner.new_execution(s);
                     println!("\nSCHEDULE {s:?}");
 
-                    let schedule = match self.scheduler.borrow_mut().new_execution_fuzz(Some(s.clone())) {
+                    let schedule = match this.scheduler.borrow_mut().new_execution_fuzz(Some(s.clone())) {
                         None => panic!("do something more intelligent here"),
                         Some(s) => s,
                     };
     
-                    let execution = Execution::new(self.scheduler.clone(), schedule);
+                    let execution = Execution::new(this.scheduler.clone(), schedule);
                     let f = Arc::clone(&f);
     
-                    span!(Level::INFO, "execution", i).in_scope(|| execution.run(&self.config, move || f()));
+                    span!(Level::INFO, "execution", i).in_scope(|| execution.run(&this.config, move || f()));
     
                     i += 1;
                 });
+            });
+
+                // });
             // }
+                
             i
         })
     }

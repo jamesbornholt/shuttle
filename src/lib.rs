@@ -193,6 +193,8 @@ pub mod scheduler;
 
 mod runtime;
 
+use std::panic::{RefUnwindSafe, UnwindSafe};
+
 pub use runtime::runner::{PortfolioRunner, Runner};
 
 /// Configuration parameters for Shuttle
@@ -314,7 +316,7 @@ where
 // for now, no iterations -- just fuck with it
 pub fn check_fuzz<F>(f: F, _iterations: usize)
 where 
-    F: Fn() + Send + Sync + 'static 
+    F: Fn() + Send + Sync + RefUnwindSafe + UnwindSafe + 'static 
 {
     use crate::scheduler::FuzzScheduler;
 
