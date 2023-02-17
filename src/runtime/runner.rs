@@ -17,6 +17,8 @@ use std::time::Instant;
 use tracing::{span, Level};
 use afl::fuzz;
 
+
+
 // use honggfuzz::fuzz;
 
 
@@ -58,7 +60,7 @@ impl<S: Scheduler + 'static> Runner<S> {
     {
         let this = AssertUnwindSafe(self);
 
-
+        
         // Q: is continuation pool here necessary?
         CONTINUATION_POOL.set(&ContinuationPool::new(), || {
             let f = Arc::new(f);
@@ -71,6 +73,7 @@ impl<S: Scheduler + 'static> Runner<S> {
                 
                 
                 fuzz!(|s: Schedule| {
+                    println!("helloooo?");
                     panic::AssertUnwindSafe(|| {
                         println!("\nhello?");
                     if this.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
