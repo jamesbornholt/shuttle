@@ -16,11 +16,8 @@ use std::thread;
 use std::time::Instant;
 use tracing::{span, Level};
 use afl::fuzz;
-
-
-
-// use honggfuzz::fuzz;
-
+use std::fs::File;
+use std::io::prelude::*;
 
 
 /// A `Runner` is the entry-point for testing concurrent code.
@@ -58,8 +55,17 @@ impl<S: Scheduler + 'static> Runner<S> {
     where
         F: Fn() + Send + Sync + RefUnwindSafe + UnwindSafe + 'static,
     {
+        panic!("a");
         let this = AssertUnwindSafe(self);
+        // let subscriber = tracing_subscriber::FmtSubscriber::new();
+        // tracing::subscriber::set_global_default(subscriber)?;
 
+        let mut fl = File::create("log.txt");
+        let mut file;
+        match fl {
+            Ok(f) => {file = f;}
+            Err(e) => {panic!("could not create file foo");}
+        }
         
         // Q: is continuation pool here necessary?
         CONTINUATION_POOL.set(&ContinuationPool::new(), || {
@@ -73,9 +79,8 @@ impl<S: Scheduler + 'static> Runner<S> {
                 
                 
                 fuzz!(|s: Schedule| {
-                    println!("helloooo?");
                     panic::AssertUnwindSafe(|| {
-                        println!("\nhello?");
+                    file.write(b"Current schedule we are exploring is: {s}");
                     if this.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
                         // simple exit once max time has elapsed
                         println!("Maximum runtime has elapsed -- if you would like to run for a longer duration, please specify desired run time");

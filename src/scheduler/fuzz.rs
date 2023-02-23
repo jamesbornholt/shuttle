@@ -55,7 +55,7 @@ impl Scheduler for FuzzScheduler {
         match &self.schedule {
             Some(schedule) => {
                 // TODO: just stole this from replay. may not even be right, not sure
-                println!("BBBBBBBBBBO {0:?}, {1}", schedule.steps, self.steps);
+                // println!("BBBBBBBBBBO {0:?}, {1}", schedule.steps, self.steps);
                 if schedule.steps.len() <= self.steps {
                     println!("in that thicc thicc if statement");
                     if runnable_tasks.len() > 0 {
