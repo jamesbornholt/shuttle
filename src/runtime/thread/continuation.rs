@@ -14,7 +14,7 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 
 scoped_thread_local! {
-    pub(crate) static CONTINUATION_POOL: ContinuationPool
+    pub static CONTINUATION_POOL: ContinuationPool
 }
 
 /// A continuation is a green thread that can be resumed and yielded at will. We use it to
@@ -23,7 +23,7 @@ scoped_thread_local! {
 /// For efficiency, we reuse continuations. The continuation can be provided a new function
 /// to run via `initialize`. A continuation is only reusable if the previous function it was
 /// executing completed.
-pub(crate) struct Continuation {
+pub struct Continuation {
     generator: Generator<'static, ContinuationInput, ContinuationOutput>,
     function: ContinuationFunction,
     state: ContinuationState,
@@ -166,7 +166,7 @@ impl Drop for Continuation {
 /// A `ContinuationPool` just holds on to old `Continuation`s that are reusable, and vends
 /// them back out again. This amortizes the cost of allocating continuations, which involve
 /// allocating new stacks (`mmap`), `mprotect`, etc.
-pub(crate) struct ContinuationPool {
+pub struct ContinuationPool {
     // invariant: if c is in this queue, c.reusable() == true
     continuations: Rc<RefCell<VecDeque<Continuation>>>,
 }
@@ -222,7 +222,7 @@ impl Drop for ContinuationPool {
 
 /// A thin wrapper around a `Continuation` that returns it to a `ContinuationPool`
 /// when dropped, but only if it's reusable.
-pub(crate) struct PooledContinuation {
+pub struct PooledContinuation {
     continuation: Option<Continuation>,
     queue: Rc<RefCell<VecDeque<Continuation>>>,
 }
@@ -260,7 +260,7 @@ impl std::fmt::Debug for PooledContinuation {
 unsafe impl Send for PooledContinuation {}
 
 /// Possibly yield back to the executor to perform a context switch.
-pub(crate) fn switch() {
+pub fn switch() {
     if ExecutionState::maybe_yield() {
         let r = generator::yield_(ContinuationOutput::Yielded).unwrap();
         assert!(matches!(r, ContinuationInput::Resume));

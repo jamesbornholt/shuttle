@@ -18,6 +18,14 @@ use tracing::{span, Level};
 use afl::fuzz;
 use std::fs::File;
 use std::io::prelude::*;
+use std::env;
+use crate::scheduler::FuzzScheduler;
+// use tracing_subscriber::FmtSubscriber;
+
+
+
+
+
 
 
 /// A `Runner` is the entry-point for testing concurrent code.
@@ -55,59 +63,76 @@ impl<S: Scheduler + 'static> Runner<S> {
     where
         F: Fn() + Send + Sync + RefUnwindSafe + UnwindSafe + 'static,
     {
-        panic!("a");
+        use std::path::PathBuf;
+
+        let wd = env::current_dir();
+        let mut directory = PathBuf::new();
+        match wd {
+            Ok(w) => {
+                directory = w;
+            }
+            Fail => ()
+        }
+        let location = directory.into_os_string().into_string().unwrap() + "log/output.log";
+
         let this = AssertUnwindSafe(self);
         // let subscriber = tracing_subscriber::FmtSubscriber::new();
         // tracing::subscriber::set_global_default(subscriber)?;
-
-        let mut fl = File::create("log.txt");
+        let mut fl = File::create(location);
         let mut file;
         match fl {
             Ok(f) => {file = f;}
             Err(e) => {panic!("could not create file foo");}
         }
+
+        file.write(b"hello");
+        let mut i = 0;
         
         // Q: is continuation pool here necessary?
-        CONTINUATION_POOL.set(&ContinuationPool::new(), || {
-            let f = Arc::new(f);
-
-            let start = Instant::now();
-
-            let mut i = 0;
+        //move
+       
             // loop {
                 //give scheduler a schedule
                 
+        let f = Arc::new(f);
                 
-                fuzz!(|s: Schedule| {
-                    panic::AssertUnwindSafe(|| {
-                    file.write(b"Current schedule we are exploring is: {s}");
-                    if this.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
-                        // simple exit once max time has elapsed
-                        println!("Maximum runtime has elapsed -- if you would like to run for a longer duration, please specify desired run time");
-                        std::process::exit;
-                    }
-                    // self.scheduler.inner.new_execution(s);
-                    println!("\nSCHEDULE {s:?}");
+        fuzz!(|s: Schedule| {
+    
+            let start = Instant::now();
+            // CONTINUATION_POOL.set(&ContinuationPool::new(), || {
+                
+    
+                
+                panic::AssertUnwindSafe(|| {
+                file.write(b"Current schedule we are exploring is: {s}");
+                if this.config.max_time.map(|t| start.elapsed() > t).unwrap_or(false) {
+                    // simple exit once max time has elapsed
+                    println!("Maximum runtime has elapsed -- if you would like to run for a longer duration, please specify desired run time");
+                    std::process::exit(1);
+                }
+                // self.scheduler.inner.new_execution(s);
+                println!("\nSCHEDULE {s:?}");
 
-                    let schedule = match this.scheduler.borrow_mut().new_execution_fuzz(Some(s.clone())) {
-                        None => panic!("do something more intelligent here"),
-                        Some(s) => s,
-                    };
-    
-                    let execution = Execution::new(this.scheduler.clone(), schedule);
-                    let f = Arc::clone(&f);
-    
-                    span!(Level::INFO, "execution", i).in_scope(|| execution.run(&this.config, move || f()));
-    
-                    i += 1;
-                });
-            });
+                let schedule = match this.scheduler.borrow_mut().new_execution_fuzz(Some(s.clone())) {
+                    None => panic!("do something more intelligent here"),
+                    Some(s) => s,
+                };
+
+                let execution = Execution::new(this.scheduler.clone(), schedule);
+                let f = Arc::clone(&f);
+
+                span!(Level::INFO, "execution", i).in_scope(|| execution.run(&this.config, move || f()));
+
+                i += 1;
+        });
+    // });
 
                 // });
             // }
                 
-            i
-        })
+            
+        });
+        i
     }
 
     /// Test the given function and return the number of times the function was invoked during the

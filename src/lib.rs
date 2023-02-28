@@ -191,7 +191,7 @@ pub mod thread;
 pub mod current;
 pub mod scheduler;
 
-mod runtime;
+pub mod runtime;
 
 use std::panic::{RefUnwindSafe, UnwindSafe};
 
